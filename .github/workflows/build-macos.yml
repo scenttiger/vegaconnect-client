@@ -1,0 +1,155 @@
+name: build-macos
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * *'   # 04:00 UTC
+
+jobs:
+  build-x86_64:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Rust 1.81 (macOS требует 1.81)
+        uses: dtolnay/rust-toolchain@1.81.0
+
+      - name: Flutter 3.22.3
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.3'
+          channel: 'stable'
+
+      - name: vcpkg (x64-osx)
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_TRIPLET=x64-osx" >> "$GITHUB_ENV"
+
+      - name: vcpkg install (libvpx libyuv opus aom)
+        run: |
+          "$VCPKG_ROOT/vcpkg" install libvpx libyuv opus aom --triplet x64-osx
+
+      - name: flutter_rust_bridge_codegen 1.80.1
+        run: |
+          cargo install flutter_rust_bridge_codegen --version 1.80.1 --features uuid --locked
+          ~/.cargo/bin/flutter_rust_bridge_codegen \
+            --rust-input ./src/flutter_ffi.rs \
+            --dart-output ./flutter/lib/generated_bridge.dart \
+            --c-output ./flutter/macos/Runner/bridge_generated.h
+
+      - name: build.py --flutter
+        run: |
+          python3 build.py --flutter
+
+      - name: upload .app (x86_64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-x86_64
+          path: flutter/build/macos/Build/Products/Release/VegaConnect.app
+          if-no-files-found: error
+
+  build-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Rust 1.81
+        uses: dtolnay/rust-toolchain@1.81.0
+
+      - name: Flutter 3.22.3
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.3'
+          channel: 'stable'
+
+      - name: vcpkg (arm64-osx)
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_TRIPLET=arm64-osx" >> "$GITHUB_ENV"
+
+      - name: vcpkg install (libvpx libyuv opus aom)
+        run: |
+          "$VCPKG_ROOT/vcpkg" install libvpx libyuv opus aom --triplet arm64-osx
+
+      - name: flutter_rust_bridge_codegen 1.80.1
+        run: |
+          cargo install flutter_rust_bridge_codegen --version 1.80.1 --features uuid --locked
+          ~/.cargo/bin/flutter_rust_bridge_codegen \
+            --rust-input ./src/flutter_ffi.rs \
+            --dart-output ./flutter/lib/generated_bridge.dart \
+            --c-output ./flutter/macos/Runner/bridge_generated.h
+
+      - name: build.py --flutter
+        run: |
+          python3 build.py --flutter
+
+      - name: upload .app (arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-arm64
+          path: flutter/build/macos/Build/Products/Release/VegaConnect.app
+          if-no-files-found: error
+
+  assemble-universal:
+    needs: [build-x86_64, build-arm64]
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: download .app (x86_64)
+        uses: actions/download-artifact@v4
+        with:
+          name: app-x86_64
+          path: artifacts/x86_64
+
+      - name: download .app (arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: app-arm64
+          path: artifacts/arm64
+
+      - name: lipo -create главного бинарника
+        run: |
+          set -euo pipefail
+          ARM_APP=artifacts/arm64/VegaConnect.app
+          X64_APP=artifacts/x86_64/VegaConnect.app
+          OUT=artifacts/universal/VegaConnect.app
+          mkdir -p artifacts/universal
+          cp -R "$ARM_APP" "$OUT"
+          lipo -create \
+            "$ARM_APP/Contents/MacOS/VegaConnect" \
+            "$X64_APP/Contents/MacOS/VegaConnect" \
+            -output "$OUT/Contents/MacOS/VegaConnect"
+          lipo -info "$OUT/Contents/MacOS/VegaConnect"
+
+      - name: create-dmg
+        run: |
+          brew install create-dmg
+          VERSION=$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/')
+          create-dmg \
+            --volname "VegaConnect" \
+            --window-pos 200 120 \
+            --window-size 800 400 \
+            --icon-size 100 \
+            --icon "VegaConnect.app" 200 190 \
+            --hide-extension "VegaConnect.app" \
+            --app-drop-link 600 185 \
+            "artifacts/VegaConnect-${VERSION}-universal.dmg" \
+            "artifacts/universal/VegaConnect.app"
+
+      - name: upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: dmg-universal
+          path: artifacts/*.dmg
+          if-no-files-found: error
