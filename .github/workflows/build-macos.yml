@@ -39,6 +39,9 @@ jobs:
         run: |
           "$VCPKG_ROOT/vcpkg" install --triplet x64-osx --x-install-root="$VCPKG_ROOT/installed"
 
+      - name: flutter pub get
+        run: cd flutter && flutter pub get
+
       - name: flutter_rust_bridge_codegen 1.80.1
         run: |
           cargo install flutter_rust_bridge_codegen --version 1.80.1 --features uuid --locked
@@ -90,6 +93,9 @@ jobs:
       - name: "vcpkg install (manifest) — все зависимости из vcpkg.json"
         run: |
           "$VCPKG_ROOT/vcpkg" install --triplet arm64-osx --x-install-root="$VCPKG_ROOT/installed"
+
+      - name: flutter pub get
+        run: cd flutter && flutter pub get
 
       - name: flutter_rust_bridge_codegen 1.80.1
         run: |
