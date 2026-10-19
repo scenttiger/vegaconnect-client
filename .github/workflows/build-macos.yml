@@ -17,6 +17,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.81"
+          components: rustfmt
 
       - name: Flutter 3.22.3
         uses: subosito/flutter-action@v2
@@ -68,6 +69,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.81"
+          components: rustfmt
 
       - name: Flutter 3.22.3
         uses: subosito/flutter-action@v2
