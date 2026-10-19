@@ -31,9 +31,10 @@ jobs:
           echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_TRIPLET=x64-osx" >> "$GITHUB_ENV"
 
+      - name: brew install nasm (нужен для сборки aom/ffmpeg)
+        run: brew install nasm
+
       - name: "vcpkg install (manifest) — все зависимости из vcpkg.json"
-        env:
-          VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
         run: |
           "$VCPKG_ROOT/vcpkg" install --triplet x64-osx --x-install-root="$VCPKG_ROOT/installed"
 
@@ -81,9 +82,10 @@ jobs:
           echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_TRIPLET=arm64-osx" >> "$GITHUB_ENV"
 
+      - name: brew install nasm (нужен для сборки aom/ffmpeg)
+        run: brew install nasm
+
       - name: "vcpkg install (manifest) — все зависимости из vcpkg.json"
-        env:
-          VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
         run: |
           "$VCPKG_ROOT/vcpkg" install --triplet arm64-osx --x-install-root="$VCPKG_ROOT/installed"
 
