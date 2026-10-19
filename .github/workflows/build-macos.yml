@@ -29,9 +29,11 @@ jobs:
           echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_TRIPLET=x64-osx" >> "$GITHUB_ENV"
 
-      - name: vcpkg install (libvpx libyuv opus aom)
+      - name: vcpkg install (manifest: все зависимости из vcpkg.json)
+        env:
+          VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
         run: |
-          "$VCPKG_ROOT/vcpkg" install libvpx libyuv opus aom --triplet x64-osx
+          "$VCPKG_ROOT/vcpkg" install --triplet x64-osx --x-install-root="$VCPKG_ROOT/installed"
 
       - name: flutter_rust_bridge_codegen 1.80.1
         run: |
@@ -75,9 +77,11 @@ jobs:
           echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_TRIPLET=arm64-osx" >> "$GITHUB_ENV"
 
-      - name: vcpkg install (libvpx libyuv opus aom)
+      - name: vcpkg install (manifest: все зависимости из vcpkg.json)
+        env:
+          VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
         run: |
-          "$VCPKG_ROOT/vcpkg" install libvpx libyuv opus aom --triplet arm64-osx
+          "$VCPKG_ROOT/vcpkg" install --triplet arm64-osx --x-install-root="$VCPKG_ROOT/installed"
 
       - name: flutter_rust_bridge_codegen 1.80.1
         run: |
