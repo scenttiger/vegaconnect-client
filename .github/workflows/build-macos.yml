@@ -39,8 +39,12 @@ jobs:
         run: |
           "$VCPKG_ROOT/vcpkg" install --triplet x64-osx --x-install-root="$VCPKG_ROOT/installed"
 
-      - name: flutter pub get
-        run: cd flutter && flutter pub get
+      - name: Patch pubspec for Flutter 3.22.3
+        working-directory: flutter
+        shell: bash
+        run: |
+          sed -i -e 's/extended_text: 14.0.0/extended_text: 13.0.0/g' pubspec.yaml
+          flutter pub get
 
       - name: flutter_rust_bridge_codegen 1.80.1
         run: |
@@ -94,8 +98,12 @@ jobs:
         run: |
           "$VCPKG_ROOT/vcpkg" install --triplet arm64-osx --x-install-root="$VCPKG_ROOT/installed"
 
-      - name: flutter pub get
-        run: cd flutter && flutter pub get
+      - name: Patch pubspec for Flutter 3.22.3
+        working-directory: flutter
+        shell: bash
+        run: |
+          sed -i -e 's/extended_text: 14.0.0/extended_text: 13.0.0/g' pubspec.yaml
+          flutter pub get
 
       - name: flutter_rust_bridge_codegen 1.80.1
         run: |
