@@ -159,6 +159,10 @@ jobs:
             "$X64_APP/Contents/MacOS/VegaConnect" \
             -output "$OUT/Contents/MacOS/VegaConnect"
           lipo -info "$OUT/Contents/MacOS/VegaConnect"
+          # ad-hoc codesign после lipo: lipo модифицирует Mach-O,
+          # подпись xcodebuild невалидна — Apple Silicon скажет "damaged".
+          codesign --force --deep --sign - --preserve-metadata=entitlements "$OUT"
+          codesign --verify --verbose=2 "$OUT"
 
       - name: create-dmg
         run: |
