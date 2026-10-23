@@ -2,12 +2,14 @@ name: build-macos
 
 on:
   workflow_dispatch:
+  push:
+    branches: [buildest, 'ci/**']
   schedule:
     - cron: '0 4 * * *'   # 04:00 UTC
 
 jobs:
   build-x86_64:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
         with:
@@ -136,13 +138,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: app-x86_64
-          path: artifacts/x86_64
+          path: artifacts/x86_64/VegaConnect.app
 
       - name: download .app (arm64)
         uses: actions/download-artifact@v4
         with:
           name: app-arm64
-          path: artifacts/arm64
+          path: artifacts/arm64/VegaConnect.app
 
       - name: lipo -create главного бинарника
         run: |

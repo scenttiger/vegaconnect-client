@@ -3,6 +3,8 @@ name: build-linux
 on:
   workflow_dispatch:
   workflow_call:
+  push:
+    branches: [buildest, 'ci/**']
 
 env:
   RUST_VERSION: "1.75"
