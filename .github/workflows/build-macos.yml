@@ -138,13 +138,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: app-x86_64
-          path: artifacts/x86_64
+          path: artifacts/x86_64/VegaConnect.app
 
       - name: download .app (arm64)
         uses: actions/download-artifact@v4
         with:
           name: app-arm64
-          path: artifacts/arm64
+          path: artifacts/arm64/VegaConnect.app
 
       - name: lipo -create главного бинарника
         run: |
