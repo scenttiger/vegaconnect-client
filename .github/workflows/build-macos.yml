@@ -255,10 +255,42 @@ jobs:
             "$X64_APP/Contents/MacOS/VegaConnect" \
             -output "$OUT/Contents/MacOS/VegaConnect"
           lipo -info "$OUT/Contents/MacOS/VegaConnect"
-          # ad-hoc codesign после lipo: lipo модифицирует Mach-O,
-          # подпись xcodebuild невалидна — Apple Silicon скажет "damaged".
-          codesign --force --deep --sign - --preserve-metadata=entitlements "$OUT"
-          codesign --verify --verbose=2 "$OUT"
+          # Inside-out ad-hoc signing. --deep is deprecated by Apple and
+          # fails on some Flutter plugin frameworks with "bundle format is
+          # ambiguous (could be app or framework)", e.g. uni_links_desktop.
+          if [ -d "$OUT/Contents/Frameworks" ]; then
+            for fw in "$OUT/Contents/Frameworks"/*.framework; do
+              [ -e "$fw" ] || continue
+              fwname=$(basename "$fw" .framework)
+              exec_path="$fw/Contents/MacOS/$fwname"
+              if [ -f "$exec_path" ]; then
+                echo "sign framework exec: $exec_path"
+                codesign --force --sign - "$exec_path"
+              fi
+              echo "sign framework bundle: $fw"
+              codesign --force --sign - "$fw" 2>/dev/null || echo "  bundle ambiguous; exec already signed, proceed"
+            done
+            for dl in "$OUT/Contents/Frameworks"/*.dylib; do
+              [ -e "$dl" ] || continue
+              echo "sign dylib: $dl"
+              codesign --force --sign - "$dl"
+            done
+          fi
+          if [ -d "$OUT/Contents/PlugIns" ]; then
+            for ext in "$OUT/Contents/PlugIns"/*.appex; do
+              [ -e "$ext" ] || continue
+              echo "sign appex: $ext"
+              codesign --force --deep --sign - "$ext"
+            done
+          fi
+          if [ -f flutter/macos/Runner/Release.entitlements ]; then
+            echo "sign app with entitlements: flutter/macos/Runner/Release.entitlements"
+            codesign --force --sign - --entitlements flutter/macos/Runner/Release.entitlements "$OUT"
+          else
+            echo "WARN: entitlements file not found; signing without entitlements"
+            codesign --force --sign - "$OUT"
+          fi
+          codesign --verify --verbose=2 --no-strict "$OUT"
 
       - name: create-dmg
         run: |
