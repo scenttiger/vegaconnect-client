@@ -72,9 +72,41 @@ jobs:
             --dart-output ./flutter/lib/generated_bridge.dart \
             --c-output ./flutter/macos/Runner/bridge_generated.h
 
+      - name: Warm CocoaPods cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cocoapods/repos/trunk
+            ~/Library/Caches/CocoaPods
+          key: cocoapods-${{ runner.os }}-${{ hashFiles('flutter/macos/Podfile.lock') }}
+          restore-keys: |
+            cocoapods-${{ runner.os }}-
+
+      - name: Pre-warm CocoaPods trunk repo (retry)
+        run: |
+          # cdn.cocoapods.org flakes on GH runners (DNS / HTTP2):
+          # "Could not resolve host: cdn.cocoapods.org" during pod install.
+          # On cache hit trunk already exists, skip the network entirely.
+          if pod repo list 2>/dev/null | grep -qE "^trunk$"; then
+            echo "trunk already present (cache hit)"
+          else
+            for i in 1 2 3 4 5; do
+              echo "pod repo add trunk attempt $i"
+              if pod repo add trunk https://cdn.cocoapods.org/ 2>&1; then break; fi
+              echo "retry in 20s..."; sleep 20
+            done
+          fi
+          pod repo list
+
       - name: build.py --flutter
         run: |
-          python3 build.py --flutter
+          # Wrap in retry: pod install inside flutter build macos still
+          # touches cdn.cocoapods.org and can flake mid-fetch.
+          for i in 1 2 3; do
+            echo "build.py --flutter attempt $i"
+            if python3 build.py --flutter; then break; fi
+            echo "retry in 30s..."; sleep 30
+          done
 
       - name: upload .app (x86_64)
         uses: actions/upload-artifact@v4
@@ -147,9 +179,41 @@ jobs:
             --dart-output ./flutter/lib/generated_bridge.dart \
             --c-output ./flutter/macos/Runner/bridge_generated.h
 
+      - name: Warm CocoaPods cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cocoapods/repos/trunk
+            ~/Library/Caches/CocoaPods
+          key: cocoapods-${{ runner.os }}-${{ hashFiles('flutter/macos/Podfile.lock') }}
+          restore-keys: |
+            cocoapods-${{ runner.os }}-
+
+      - name: Pre-warm CocoaPods trunk repo (retry)
+        run: |
+          # cdn.cocoapods.org flakes on GH runners (DNS / HTTP2):
+          # "Could not resolve host: cdn.cocoapods.org" during pod install.
+          # On cache hit trunk already exists, skip the network entirely.
+          if pod repo list 2>/dev/null | grep -qE "^trunk$"; then
+            echo "trunk already present (cache hit)"
+          else
+            for i in 1 2 3 4 5; do
+              echo "pod repo add trunk attempt $i"
+              if pod repo add trunk https://cdn.cocoapods.org/ 2>&1; then break; fi
+              echo "retry in 20s..."; sleep 20
+            done
+          fi
+          pod repo list
+
       - name: build.py --flutter
         run: |
-          python3 build.py --flutter
+          # Wrap in retry: pod install inside flutter build macos still
+          # touches cdn.cocoapods.org and can flake mid-fetch.
+          for i in 1 2 3; do
+            echo "build.py --flutter attempt $i"
+            if python3 build.py --flutter; then break; fi
+            echo "retry in 30s..."; sleep 30
+          done
 
       - name: upload .app (arm64)
         uses: actions/upload-artifact@v4
