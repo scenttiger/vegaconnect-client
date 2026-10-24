@@ -80,6 +80,22 @@ jobs:
       - name: Generate bridge
         shell: bash
         run: |
+          # Stabilize git over flaky GH runners: long cargo fetches to
+          # github.com routinely die with "HTTP2 framing layer" or
+          # "RPC failed; curl 56 Recv failure: Operation timed out".
+          git config --global http.version HTTP/1.1
+          git config --global http.postBuffer 524288000
+          git config --global http.lowSpeedLimit 1000
+          git config --global http.lowSpeedTime 300
+          export CARGO_NET_RETRY=10
+          export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          # Prefetch project deps with retry: codegen runs cargo metadata
+          # which pulls ~20 git deps and routinely times out on GH runners.
+          for i in 1 2 3 4 5; do
+            echo "cargo fetch attempt $i"
+            if cargo fetch --locked; then break; fi
+            echo "retry in 20s..."; sleep 20
+          done
           ~/.cargo/bin/flutter_rust_bridge_codegen \
             --rust-input ./src/flutter_ffi.rs \
             --dart-output ./flutter/lib/generated_bridge.dart \

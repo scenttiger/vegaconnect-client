@@ -51,14 +51,62 @@ jobs:
       - name: flutter_rust_bridge_codegen 1.80.1
         run: |
           cargo install flutter_rust_bridge_codegen --version 1.80.1 --features uuid --locked
+          # Stabilize git over flaky GH runners: long cargo fetches to
+          # github.com routinely die with "HTTP2 framing layer" or
+          # "RPC failed; curl 56 Recv failure: Operation timed out".
+          git config --global http.version HTTP/1.1
+          git config --global http.postBuffer 524288000
+          git config --global http.lowSpeedLimit 1000
+          git config --global http.lowSpeedTime 300
+          export CARGO_NET_RETRY=10
+          export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          # Prefetch project deps with retry: codegen runs cargo metadata
+          # which pulls ~20 git deps and routinely times out on GH runners.
+          for i in 1 2 3 4 5; do
+            echo "cargo fetch attempt $i"
+            if cargo fetch --locked; then break; fi
+            echo "retry in 20s..."; sleep 20
+          done
           ~/.cargo/bin/flutter_rust_bridge_codegen \
             --rust-input ./src/flutter_ffi.rs \
             --dart-output ./flutter/lib/generated_bridge.dart \
             --c-output ./flutter/macos/Runner/bridge_generated.h
 
+      - name: Warm CocoaPods cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cocoapods/repos/trunk
+            ~/Library/Caches/CocoaPods
+          key: cocoapods-${{ runner.os }}-${{ hashFiles('flutter/macos/Podfile.lock') }}
+          restore-keys: |
+            cocoapods-${{ runner.os }}-
+
+      - name: Pre-warm CocoaPods trunk repo (retry)
+        run: |
+          # cdn.cocoapods.org flakes on GH runners (DNS / HTTP2):
+          # "Could not resolve host: cdn.cocoapods.org" during pod install.
+          # On cache hit trunk already exists, skip the network entirely.
+          if pod repo list 2>/dev/null | grep -qE "^trunk$"; then
+            echo "trunk already present (cache hit)"
+          else
+            for i in 1 2 3 4 5; do
+              echo "pod repo add trunk attempt $i"
+              if pod repo add trunk https://cdn.cocoapods.org/ 2>&1; then break; fi
+              echo "retry in 20s..."; sleep 20
+            done
+          fi
+          pod repo list
+
       - name: build.py --flutter
         run: |
-          python3 build.py --flutter
+          # Wrap in retry: pod install inside flutter build macos still
+          # touches cdn.cocoapods.org and can flake mid-fetch.
+          for i in 1 2 3; do
+            echo "build.py --flutter attempt $i"
+            if python3 build.py --flutter; then break; fi
+            echo "retry in 30s..."; sleep 30
+          done
 
       - name: upload .app (x86_64)
         uses: actions/upload-artifact@v4
@@ -110,14 +158,62 @@ jobs:
       - name: flutter_rust_bridge_codegen 1.80.1
         run: |
           cargo install flutter_rust_bridge_codegen --version 1.80.1 --features uuid --locked
+          # Stabilize git over flaky GH runners: long cargo fetches to
+          # github.com routinely die with "HTTP2 framing layer" or
+          # "RPC failed; curl 56 Recv failure: Operation timed out".
+          git config --global http.version HTTP/1.1
+          git config --global http.postBuffer 524288000
+          git config --global http.lowSpeedLimit 1000
+          git config --global http.lowSpeedTime 300
+          export CARGO_NET_RETRY=10
+          export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          # Prefetch project deps with retry: codegen runs cargo metadata
+          # which pulls ~20 git deps and routinely times out on GH runners.
+          for i in 1 2 3 4 5; do
+            echo "cargo fetch attempt $i"
+            if cargo fetch --locked; then break; fi
+            echo "retry in 20s..."; sleep 20
+          done
           ~/.cargo/bin/flutter_rust_bridge_codegen \
             --rust-input ./src/flutter_ffi.rs \
             --dart-output ./flutter/lib/generated_bridge.dart \
             --c-output ./flutter/macos/Runner/bridge_generated.h
 
+      - name: Warm CocoaPods cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cocoapods/repos/trunk
+            ~/Library/Caches/CocoaPods
+          key: cocoapods-${{ runner.os }}-${{ hashFiles('flutter/macos/Podfile.lock') }}
+          restore-keys: |
+            cocoapods-${{ runner.os }}-
+
+      - name: Pre-warm CocoaPods trunk repo (retry)
+        run: |
+          # cdn.cocoapods.org flakes on GH runners (DNS / HTTP2):
+          # "Could not resolve host: cdn.cocoapods.org" during pod install.
+          # On cache hit trunk already exists, skip the network entirely.
+          if pod repo list 2>/dev/null | grep -qE "^trunk$"; then
+            echo "trunk already present (cache hit)"
+          else
+            for i in 1 2 3 4 5; do
+              echo "pod repo add trunk attempt $i"
+              if pod repo add trunk https://cdn.cocoapods.org/ 2>&1; then break; fi
+              echo "retry in 20s..."; sleep 20
+            done
+          fi
+          pod repo list
+
       - name: build.py --flutter
         run: |
-          python3 build.py --flutter
+          # Wrap in retry: pod install inside flutter build macos still
+          # touches cdn.cocoapods.org and can flake mid-fetch.
+          for i in 1 2 3; do
+            echo "build.py --flutter attempt $i"
+            if python3 build.py --flutter; then break; fi
+            echo "retry in 30s..."; sleep 30
+          done
 
       - name: upload .app (arm64)
         uses: actions/upload-artifact@v4
@@ -159,6 +255,42 @@ jobs:
             "$X64_APP/Contents/MacOS/VegaConnect" \
             -output "$OUT/Contents/MacOS/VegaConnect"
           lipo -info "$OUT/Contents/MacOS/VegaConnect"
+          # Inside-out ad-hoc signing. --deep is deprecated by Apple and
+          # fails on some Flutter plugin frameworks with "bundle format is
+          # ambiguous (could be app or framework)", e.g. uni_links_desktop.
+          if [ -d "$OUT/Contents/Frameworks" ]; then
+            for fw in "$OUT/Contents/Frameworks"/*.framework; do
+              [ -e "$fw" ] || continue
+              fwname=$(basename "$fw" .framework)
+              exec_path="$fw/Contents/MacOS/$fwname"
+              if [ -f "$exec_path" ]; then
+                echo "sign framework exec: $exec_path"
+                codesign --force --sign - "$exec_path"
+              fi
+              echo "sign framework bundle: $fw"
+              codesign --force --sign - "$fw" 2>/dev/null || echo "  bundle ambiguous; exec already signed, proceed"
+            done
+            for dl in "$OUT/Contents/Frameworks"/*.dylib; do
+              [ -e "$dl" ] || continue
+              echo "sign dylib: $dl"
+              codesign --force --sign - "$dl"
+            done
+          fi
+          if [ -d "$OUT/Contents/PlugIns" ]; then
+            for ext in "$OUT/Contents/PlugIns"/*.appex; do
+              [ -e "$ext" ] || continue
+              echo "sign appex: $ext"
+              codesign --force --deep --sign - "$ext"
+            done
+          fi
+          if [ -f flutter/macos/Runner/Release.entitlements ]; then
+            echo "sign app with entitlements: flutter/macos/Runner/Release.entitlements"
+            codesign --force --sign - --entitlements flutter/macos/Runner/Release.entitlements "$OUT"
+          else
+            echo "WARN: entitlements file not found; signing without entitlements"
+            codesign --force --sign - "$OUT"
+          fi
+          codesign --verify --verbose=2 --no-strict "$OUT"
 
       - name: create-dmg
         run: |
