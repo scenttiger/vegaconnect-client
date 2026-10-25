@@ -16,3 +16,8 @@ jobs:
     name: Build Linux x86_64
     uses: ./.github/workflows/build-linux.yml
     secrets: inherit
+
+  macos:
+    name: Build macOS universal
+    uses: ./.github/workflows/build-macos.yml
+    secrets: inherit

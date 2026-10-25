@@ -2,10 +2,9 @@ name: build-macos
 
 on:
   workflow_dispatch:
+  workflow_call:
   push:
     branches: [buildest, 'ci/**']
-  schedule:
-    - cron: '0 4 * * *'   # 04:00 UTC
 
 jobs:
   build-x86_64:
