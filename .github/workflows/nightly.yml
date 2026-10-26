@@ -21,3 +21,58 @@ jobs:
     name: Build macOS universal
     uses: ./.github/workflows/build-macos.yml
     secrets: inherit
+
+  # Постоянное хранилище артефактов: artifacts живут 7 дней
+  # (retention-days в build-*), rolling-tag nightly — навсегда.
+  publish:
+    name: Publish nightly Release
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows portable
+        uses: actions/download-artifact@v4
+        with:
+          name: vegaconnect-windows-x64-portable
+          path: dist/windows-portable/
+
+      - name: Download Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: vegaconnect-windows-x64-installer
+          path: dist/windows-installer/
+
+      - name: Download Linux
+        uses: actions/download-artifact@v4
+        with:
+          name: vegaconnect-linux-x64
+          path: dist/linux/
+
+      - name: Download macOS dmg
+        uses: actions/download-artifact@v4
+        with:
+          name: dmg-universal
+          path: dist/macos/
+
+      - name: Package Windows portable into ZIP
+        run: |
+          cd dist/windows-portable
+          zip -r ../VegaConnect-windows-portable.zip .
+
+      - name: Publish rolling nightly Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly
+          body: |
+            Автоматическая ночная сборка. Перезаписывается каждую ночь.
+            Не для production — см. стабильные релизы (теги v*).
+          prerelease: true
+          draft: false
+          generate_release_notes: false
+          files: |
+            dist/VegaConnect-windows-portable.zip
+            dist/windows-installer/*.exe
+            dist/linux/*.tar.gz
+            dist/macos/*.dmg
