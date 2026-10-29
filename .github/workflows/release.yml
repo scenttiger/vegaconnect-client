@@ -48,6 +48,16 @@ jobs:
           zip -r ../VegaConnect-windows-portable.zip .
           cd ../..
 
+      - name: Delete existing release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view ${{ github.ref_name }} > /dev/null 2>&1; then
+            gh release view ${{ github.ref_name }} --json assets -q '.assets[].name' | while read -r asset; do
+              gh release delete-asset ${{ github.ref_name }} "$asset" -y
+            done
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
