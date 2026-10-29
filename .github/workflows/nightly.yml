@@ -60,6 +60,16 @@ jobs:
           cd dist/windows-portable
           zip -r ../VegaConnect-windows-portable.zip .
 
+      - name: Delete old nightly assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view nightly > /dev/null 2>&1; then
+            gh release view nightly --json assets -q '.assets[].name' | while read -r asset; do
+              gh release delete-asset nightly "$asset" -y
+            done
+          fi
+
       - name: Publish rolling nightly Release
         uses: softprops/action-gh-release@v2
         with:
