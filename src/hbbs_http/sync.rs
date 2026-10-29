@@ -248,12 +248,35 @@ async fn start_hbbs_sync_async() {
                 // обрабатывается тем же механизмом, что и для `conns`.
                 // См. ui_cm_interface::alive_outgoing_conn_ids.
                 let outgoing = crate::ui_cm_interface::alive_outgoing_conn_ids();
-                if !outgoing.is_empty() {
-                    v["outgoing_conns"] = json!(outgoing);
-                }
+                // Всегда отправляем outgoing_conns (даже пустой массив):
+                // подпись (#4a) и проверка (#4b) покрывают канонический JSON,
+                // сервер должен видеть поле всегда.
+                v["outgoing_conns"] = json!(outgoing);
 
                 let modified_at = LocalConfig::get_option("strategy_timestamp").parse::<i64>().unwrap_or(0);
                 v["modified_at"] = json!(modified_at);
+
+                // PR #4a: подпись heartbeat {id, outgoing_conns, ts} ключом
+                // устройства. Формат байтов - heartbeat_signed_msg (ниже).
+                // Без подписи account-api (#4b) не применяет enforcement
+                // (id подделывается -> DoS disconnect чужому аккаунту).
+                let kp = Config::get_key_pair();
+                if let Some(sk) =
+                    hbb_common::sodiumoxide::crypto::sign::SecretKey::from_slice(&kp.0)
+                {
+                    let ts_secs: i64 = (hbb_common::get_time() / 1000) as i64;
+                    let ts_str = ts_secs.to_string();
+                    let outgoing_json = v["outgoing_conns"].to_string();
+                    v["ts"] = json!(ts_secs);
+                    let sig = hbb_common::sodiumoxide::crypto::sign::sign_detached(
+                        &heartbeat_signed_msg(&id, &ts_str, &outgoing_json),
+                        &sk,
+                    );
+                    v["signature"] = json!(crate::encode64(sig.to_bytes()));
+                } else {
+                    log::warn!("Heartbeat: no device key, sending unsigned (no enforcement)");
+                }
+
                 let response = crate::post_request(url.clone(), v.to_string(), "").await;
                 if let Err(err) = &response {
                     hbb_common::throttled_log!(API_LOG_INTERVAL, warn, "Heartbeat failed: {err:?}");
@@ -423,13 +446,30 @@ fn switch_grant_signed_msg(id: &str, switch_code_verifier: &str, timestamp: &str
     msg
 }
 
+/// PR #4a: канонические байты для подписи heartbeat.
+/// Формат: `heartbeat\0` + id + `\0` + ts (decimal) + `\0` + outgoing_conns_json.
+/// Образец и layout-тест - `switch_grant_signed_msg` / `test_switch_grant_signed_msg_layout`.
+/// Сервер (#4b, account-api) должен восстанавливать те же байты.
+fn heartbeat_signed_msg(id: &str, ts: &str, outgoing_conns_json: &str) -> Vec<u8> {
+    let mut msg = Vec::with_capacity(
+        10 + id.len() + 1 + ts.len() + 1 + outgoing_conns_json.len(),
+    );
+    msg.extend_from_slice(b"heartbeat\0");
+    msg.extend_from_slice(id.as_bytes());
+    msg.push(0);
+    msg.extend_from_slice(ts.as_bytes());
+    msg.push(0);
+    msg.extend_from_slice(outgoing_conns_json.as_bytes());
+    msg
+}
+
 #[cfg(all(
     test,
     feature = "flutter",
     not(any(target_os = "android", target_os = "ios"))
 ))]
 mod tests {
-    use super::{switch_code_verifier, switch_grant_signed_msg};
+    use super::{heartbeat_signed_msg, switch_code_verifier, switch_grant_signed_msg};
 
     #[test]
     fn test_switch_code_verifier_is_not_raw_switch_code() {
@@ -455,5 +495,22 @@ mod tests {
         ]
         .concat();
         assert_eq!(switch_grant_signed_msg("id1", "c1", "1700000000"), expected);
+    }
+
+    #[test]
+    fn test_heartbeat_signed_msg_layout() {
+        let expected: Vec<u8> = [
+            &b"heartbeat\0"[..],
+            b"id1",
+            b"\0",
+            b"1700000000",
+            b"\0",
+            b"[1,2,3]",
+        ]
+        .concat();
+        assert_eq!(
+            heartbeat_signed_msg("id1", "1700000000", "[1,2,3]"),
+            expected
+        );
     }
 }
